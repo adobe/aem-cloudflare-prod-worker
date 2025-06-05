@@ -102,6 +102,10 @@ const handleRequest = async (request, env, ctx) => {
       resp.headers.set('location', `${location}${savedSearch}`);
     }
   }
+  if (resp.status === 304) {
+    // 304 Not Modified - remove CSP header
+    resp.headers.delete('Content-Security-Policy');
+  }
   resp.headers.delete('age');
   resp.headers.delete('x-robots-tag');
   return resp;
