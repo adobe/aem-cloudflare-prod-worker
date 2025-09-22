@@ -79,7 +79,6 @@ const handleRequest = async (request, env, ctx) => {
     return new Response('Invalid ORIGIN_HOSTNAME', { status: 500 });
   }
   const req = new Request(url, request);
-  req.headers.set('user-agent', req.headers.get('user-agent'));
   req.headers.set('x-forwarded-host', req.headers.get('host'));
   req.headers.set('x-byo-cdn-type', 'cloudflare');
   if (env.PUSH_INVALIDATION !== 'disabled') {

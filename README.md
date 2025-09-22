@@ -44,13 +44,13 @@ All you have to do is set the `ORIGIN_AUTHENTICATION` environment variable in th
 Install `wrangler` (if you haven't done so already):
 
 ```sh
-npm i @cloudflare/wrangler -g
+npm i -D wrangler@latest
 ```
 
 Publish your site:
 
 ```sh
-wrangler deploy
+npx wrangler deploy
 ```
 
 ## 5. Test your site
@@ -60,5 +60,5 @@ Point your browser to your site (e.g. `https://www.mydomain.com/`).
 For troubleshooting you can turn on logging in your terminal:
 
 ```sh
-wrangler tail -f pretty
+npx wrangler tail -f pretty
 ```
