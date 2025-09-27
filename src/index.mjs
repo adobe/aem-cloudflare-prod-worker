@@ -42,11 +42,11 @@ const handleRequest = async (request, env, ctx) => {
     return new Response('Not Found', { status: 404 });
   }
 
-  if(isRUMRequest(url)) {
-    // only allow GET, POST, OPTIONS
-    if(!['GET', 'POST', 'OPTIONS'].includes(request.method)) {
-      return new Response('Method Not Allowed', { status: 405 });
-    }
+  const allowedMethods = isRUMRequest(url)
+    ? ['GET', 'POST', 'OPTIONS']
+    : ['GET'];
+  if(!allowedMethods.includes(request.method)) {
+    return new Response('Method Not Allowed', { status: 405 });
   }
 
   const extension = getExtension(url.pathname);
