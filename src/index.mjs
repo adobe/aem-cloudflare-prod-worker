@@ -21,6 +21,47 @@ const getExtension = (path) => {
 const isMediaRequest = (url) => /\/media_[0-9a-f]{40,}[/a-zA-Z0-9_-]*\.[0-9a-z]+$/.test(url.pathname);
 const isRUMRequest = (url) => /\/\.(rum|optel)\/.*/.test(url.pathname);
 
+// Closed User Group (CUG) headers sent by the AEM Edge Delivery origin when a
+// resource is protected. These are an origin <-> worker contract and must
+// NEVER be forwarded to the browser (see the strip step below).
+//
+//   x-aem-cug-required: "true" when the resource is part of a closed user group
+//   x-aem-cug-groups:   comma-separated list of group identifiers allowed access
+const CUG_REQUIRED_HEADER = 'x-aem-cug-required';
+const CUG_GROUPS_HEADER = 'x-aem-cug-groups';
+
+/**
+ * Authorization hook for Closed User Group (CUG) protected resources.
+ *
+ * --------------------------------------------------------------------------
+ * AUTHENTICATION IS NOT INCLUDED IN THIS TEMPLATE.
+ * --------------------------------------------------------------------------
+ *
+ * Wire your identity provider in here. A typical implementation would:
+ *   1. Read a signed session cookie / JWT from `request`.
+ *   2. If missing or invalid, redirect to your IdP (Adobe IMS, Okta, Auth0,
+ *      Azure AD, ...) using OAuth 2.0 Authorization Code + PKCE.
+ *   3. On callback, create a signed session and set it as an
+ *      HttpOnly; Secure; SameSite=Lax cookie.
+ *   4. Match the user's claims (e.g. email domain, groups) against
+ *      `allowedGroups` (parsed from x-aem-cug-groups) and return true/false.
+ *
+ * Reference implementation (Adobe IMS + JWT session + Cloudflare KV):
+ *   https://github.com/aemsites/summit-portal/tree/main/workers/cloudflare/cug-adobe-oauth-worker
+ *
+ * Until this is implemented, CUG-protected resources return 401 Unauthorized
+ * — that is the secure default. Never return `true` unconditionally from this
+ * function in production.
+ *
+ * @param {Request} request       the incoming request (use to read cookies)
+ * @param {object}  env           Worker environment (vars, secrets, KV, ...)
+ * @param {string[]} allowedGroups groups allowed by the origin, may be empty
+ * @returns {Promise<boolean>}    true to serve the response, false to deny
+ */
+// eslint-disable-next-line no-unused-vars
+async function isAuthorized(request, env, allowedGroups) {
+  return false;
+}
 
 const handleRequest = async (request, env, ctx) => {
   const url = new URL(request.url);
@@ -95,6 +136,34 @@ const handleRequest = async (request, env, ctx) => {
     },
   });
   resp = new Response(resp.body, resp);
+
+  // --- Closed User Group (CUG) enforcement ---
+  // Read CUG signals from the origin response, then strip them so they never
+  // leak to the browser. If the resource is CUG-protected, delegate the
+  // decision to the `isAuthorized` hook above (which the customer implements
+  // against their identity provider).
+  const cugRequired = resp.headers.get(CUG_REQUIRED_HEADER) === 'true';
+  const cugGroupsHeader = resp.headers.get(CUG_GROUPS_HEADER) || '';
+  resp.headers.delete(CUG_REQUIRED_HEADER);
+  resp.headers.delete(CUG_GROUPS_HEADER);
+
+  if (cugRequired) {
+    const allowedGroups = cugGroupsHeader
+      .split(',')
+      .map((g) => g.trim())
+      .filter(Boolean);
+    const ok = await isAuthorized(request, env, allowedGroups);
+    if (!ok) {
+      // Secure default: deny when auth is not implemented or the user is not
+      // authorized. Replace this with a redirect to your IdP in `isAuthorized`.
+      return new Response('Unauthorized', { status: 401 });
+    }
+    // Authenticated CUG responses are user-specific: prevent caching by the
+    // browser. The AEM origin is expected to also send Cache-Control: private
+    // on CUG resources so the CF edge cache does not retain them.
+    resp.headers.set('Cache-Control', 'private, no-store');
+  }
+
   if (resp.status === 301 && savedSearch) {
     const location = resp.headers.get('location');
     if (location && !location.match(/\?.*$/)) {

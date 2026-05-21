@@ -39,7 +39,23 @@ Authorization: token <token>
 
 All you have to do is set the `ORIGIN_AUTHENTICATION` environment variable in the Cloudflare dashboard to the token you have configured in your AEM project or do the same via wrangler.
 
-## 5. Deploy your site
+## 5. Closed User Groups (CUG) — optional
+
+If your AEM project uses [Closed User Groups](https://www.aem.live/docs/authentication-setup-authentication), the origin sends two headers on protected resources:
+
+- `x-aem-cug-required: true`
+- `x-aem-cug-groups: <comma,separated,group,ids>`
+
+This worker:
+
+1. Strips both headers before forwarding the response — they must never reach the browser.
+2. Calls the `isAuthorized(request, env, allowedGroups)` hook in [`src/index.mjs`](src/index.mjs).
+3. Returns `401 Unauthorized` whenever the hook returns `false`.
+4. Sets `Cache-Control: private, no-store` on authorized CUG responses.
+
+**Authentication is intentionally not implemented in this template.** Plug your identity provider (Adobe IMS, Okta, Auth0, Azure AD, ...) into `isAuthorized` — see the inline comments in `src/index.mjs` for guidance and a full reference implementation (Adobe IMS + OAuth 2.0 + PKCE + JWT session) at [`aemsites/summit-portal/workers/cloudflare/cug-adobe-oauth-worker`](https://github.com/aemsites/summit-portal/tree/main/workers/cloudflare/cug-adobe-oauth-worker).
+
+## 6. Deploy your site
 
 Install `wrangler` (if you haven't done so already):
 
@@ -53,7 +69,7 @@ Publish your site:
 npx wrangler deploy
 ```
 
-## 5. Test your site
+## 7. Test your site
 
 Point your browser to your site (e.g. `https://www.mydomain.com/`).
 
