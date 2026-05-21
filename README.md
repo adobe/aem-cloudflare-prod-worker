@@ -41,7 +41,7 @@ All you have to do is set the `ORIGIN_AUTHENTICATION` environment variable in th
 
 ## 5. Closed User Groups (CUG) — optional
 
-If your AEM project uses [Closed User Groups](https://www.aem.live/docs/authentication-setup-authentication), the origin sends two headers on protected resources:
+If your AEM project uses Closed User Groups, the origin sends two headers on protected resources:
 
 - `x-aem-cug-required: true`
 - `x-aem-cug-groups: <comma,separated,group,ids>`
