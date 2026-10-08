@@ -21,6 +21,35 @@ const getExtension = (path) => {
 const isMediaRequest = (url) => /\/media_[0-9a-f]{40,}[/a-zA-Z0-9_-]*\.[0-9a-z]+$/.test(url.pathname);
 const isRUMRequest = (url) => /\/\.(rum|optel)\/.*/.test(url.pathname);
 
+const MEDIA_REF_REGEX = /media_([0-9a-f]{40,})[/a-zA-Z0-9_-]*\./g;
+const MEDIA_PATH_REGEX = /\/media_([0-9a-f]{40,})[/a-zA-Z0-9_-]*\.[0-9a-z]+$/;
+
+/**
+ * Extracts the unique media hashes of all "media_<hash>..." references in a string.
+ * @param {string} text HTML, JSON or a header value
+ * @returns {string[]} unique hashes
+ */
+const extractMediaHashes = (text) => {
+  if (!text) return [];
+  return [...new Set([...text.matchAll(MEDIA_REF_REGEX)].map((m) => m[1]))];
+};
+
+/**
+ * Registers the given hashes in the published media KV store. Hashes that already
+ * exist are left untouched. New ones get a JSON value { timestamp, path }.
+ */
+const registerMediaHashes = async (env, hashes, pathname) => {
+  if (!env.PUBLISHED_MEDIA || !hashes.length) return;
+  await Promise.all(hashes.map(async (hash) => {
+    if (await env.PUBLISHED_MEDIA.get(hash) === null) {
+      await env.PUBLISHED_MEDIA.put(hash, JSON.stringify({
+        timestamp: new Date().toISOString(),
+        path: pathname,
+      }));
+    }
+  }));
+};
+
 
 const handleRequest = async (request, env, ctx) => {
   const url = new URL(request.url);
@@ -46,6 +75,14 @@ const handleRequest = async (request, env, ctx) => {
     // only allow GET, POST, OPTIONS
     if(!['GET', 'POST', 'OPTIONS'].includes(request.method)) {
       return new Response('Method Not Allowed', { status: 405 });
+    }
+  }
+
+  // media requests are only served if the hash was published (seen in a html/json/301 response)
+  if (isMediaRequest(url) && env.PUBLISHED_MEDIA) {
+    const hash = url.pathname.match(MEDIA_PATH_REGEX)[1];
+    if (await env.PUBLISHED_MEDIA.get(hash) === null) {
+      return new Response('Not Found', { status: 404 });
     }
   }
 
@@ -99,6 +136,26 @@ const handleRequest = async (request, env, ctx) => {
     const location = resp.headers.get('location');
     if (location && !location.match(/\?.*$/)) {
       resp.headers.set('location', `${location}${savedSearch}`);
+    }
+  }
+  if (env.PUBLISHED_MEDIA && request.method === 'GET') {
+    const hashes = [];
+    if (resp.status === 301) {
+      hashes.push(...extractMediaHashes(resp.headers.get('location')));
+    } else if (resp.ok && resp.body) {
+      const contentType = resp.headers.get('content-type') || '';
+      if (/text\/html|json/i.test(contentType)) {
+        const body = await resp.text();
+        hashes.push(...extractMediaHashes(body));
+        resp = new Response(body, resp);
+      }
+    }
+    // block the response until all KV writes have completed
+    try {
+      await registerMediaHashes(env, hashes, url.pathname);
+    } catch (e) {
+      // serve the response anyway
+      console.error('Failed to register media hashes', e);
     }
   }
   if (resp.status === 304) {
