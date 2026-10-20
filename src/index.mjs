@@ -75,7 +75,7 @@ const handleRequest = async (request, env, ctx) => {
   searchParams.sort();
   
   url.hostname = env.ORIGIN_HOSTNAME;
-  if (!url.origin.match(/^https:\/\/main--.*--.*\.(?:aem|hlx)\.live/)) {
+  if (!url.origin.match(/^https:\/\/main--.*--.*\.aem\.live/)) {
     return new Response('Invalid ORIGIN_HOSTNAME', { status: 500 });
   }
   const req = new Request(url, request);
